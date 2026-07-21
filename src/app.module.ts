@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { UsersModule } from './users/users.module';
 
 
 @Module({
@@ -9,7 +10,8 @@ import { ConfigModule } from '@nestjs/config';
       isGlobal: true,
       //Nos permite interpolar variables de entorno
       expandVariables: true,
-    })
+    }),
+    UsersModule,
   ],
 
 })
