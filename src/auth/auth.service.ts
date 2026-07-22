@@ -84,8 +84,134 @@ export class AuthService {
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                isVerified: user.isVerified,
             }
         }
+    }
+
+    //Este metodo se encarga de generar un nuevo access token a partir del refresh token, verificando que este sea válido de acuerdo al hash guardado en BD
+    async refresh(refreshToken: string, res: Response) {
+        if(!refreshToken){
+            throw new UnauthorizedException('No se proporcionó un token de actualización');
+        }
+
+        let payload: {sub:string, email:string}
+        try{
+            payload = await this.jwtService.verifyAsync(refreshToken, {
+                secret: this.configService.get('JWT_REFRESH_SECRET'),
+
+            })
+        } catch{
+            throw new UnauthorizedException('Token de actualización inválido o expirado');
+        }
+
+        const user = await this.usersService.findById(payload.sub);
+
+        if(!user || !user.refreshTokenHash){
+            throw new UnauthorizedException('Usuario no encontrado o sin token de actualización');
+        }
+
+        const tokenMatch = await bcrypt.compare(refreshToken, user.refreshTokenHash);
+        if(!tokenMatch){
+            throw new UnauthorizedException('Token de actualización inválido');
+        }
+        
+        const tokens = await this.generateTokens(user);
+        await this.saveRefreshToken(user.id, tokens.refreshToken);
+        this.setRefreshTokenCookie(res, tokens.refreshToken); 
+
+        return{
+            accessToken: tokens.accessToken,
+        };
+    }
+
+    
+    //Metodo para cerrar sesion, eliminando el hash del refresh token de DB para que no se puedan generar mas refresh tokens y borrando la cookie.
+     async logout(userId:string, res: Response){
+        await this.usersService.update(userId, { refreshTokenHash: null });
+        res.clearCookie('refreshToken')
+        return {
+            message:'Sesión cerrada correctamente'
+        }
+    }
+
+    async verifyEmail(token: string, res: Response) {
+        const user = await this.usersService.findByVerificationToken(token);
+
+        if(!user || !user.verificationToken){
+            throw new BadRequestException('Token de verificación inválido');
+        }
+
+        //Aquí la condición es que si existe la fecha de expiracion y es anterior a la fecha actual, se lanza el error
+        if(
+            user.verificationTokenExpiresAt && 
+            user.verificationTokenExpiresAt < new Date()
+        ){  
+            throw new BadRequestException('El token de verificación ha expirado. Solicite uno nuevo');
+        }
+
+        //Ya se verifico el usuario, entonces cambiamos el estado y ponemos nulo los campos que apoyaban este proceso
+        await this.usersService.update(user.id,{
+            isVerified: true,
+            verificationToken: null,
+            verificationTokenExpiresAt: null,
+        });
+
+        //Hacemos lo mismo que cuando se logea el usuario
+        const tokens = await this.generateTokens(user);
+        await this.saveRefreshToken(user.id, tokens.refreshToken);
+        this.setRefreshTokenCookie(res, tokens.refreshToken);
+
+        return {
+            message: 'Correo electrónico verificado exitosamente',
+            accessToken: tokens.accessToken,
+            user:{
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+            }
+        }
+
+    }
+
+
+    //Este metodo se va a encargar de generar los tokens haciendo uso de la libreria jwtService, que es un servicio de NestJS que nos permite generar y verificar tokens JWT.
+    //Son dos tokens, el de acceso de duración corta y el refresh que dura más tiempo y se almacena en la cookie
+    private async generateTokens(user: User) {
+        const payload = {
+            sub: user.id,
+            email: user.email,
+            role: user.role,
+        };
+        const accessToken = await this.jwtService.signAsync(payload,{
+            secret: this.configService.get('JWT_ACCESS_SECRET'),
+            expiresIn: this.configService.get('JWT_ACCESS_EXPIRES_IN'),
+        });
+
+        const refreshToken = await this.jwtService.signAsync(payload,{
+            secret: this.configService.get('JWT_REFRESH_SECRET'),
+            expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN'),
+        });
+
+        return { 
+            accessToken, 
+            refreshToken 
+        };
+    }
+
+    //Con este metodo generamos el hash del refresh token y lo guardamos en la base de datos, para luego poder compararlo cuando el usuario haga una solicitud de refresh token.
+    private async saveRefreshToken(userId: string, refreshToken: string) {
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    await this.usersService.update(userId, { refreshTokenHash });
+    }
+
+    //Con este metodo establecemos la cookie del refresh token.
+    private setRefreshTokenCookie(res: Response, refreshToken: string) {
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000, 
+        })
     }
 }
