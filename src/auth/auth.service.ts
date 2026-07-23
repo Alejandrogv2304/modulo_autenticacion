@@ -134,6 +134,59 @@ export class AuthService {
         }
     }
 
+    async forgotPassword(email:string){
+        const user = await this.usersService.findByEmail(email);
+
+        if(!user){
+            return{
+                message: 
+                'Si el correo electrónico está registrado, se enviará un enlace de restablecimiento de contraseña'
+            }
+        }
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+        await this.usersService.update(user.id, {
+            resetToken,
+            resetTokenExpiresAt,
+        });
+
+        void this.emailService.sendPasswordResetEmail(user.email, resetToken);
+        
+        return{
+            message: 
+            'Si el correo electrónico está registrado, se enviará un enlace de restablecimiento de contraseña'
+        }
+    }
+
+    async resetPassword(token:string, newPassword:string){
+        const user = await this.usersService.findByResetToken(token);
+        
+        if(!user || !user.resetToken){
+            throw new BadRequestException('Token de restablecimiento de contraseña inválido');
+        }
+
+        if(
+            user.resetTokenExpiresAt && 
+            user.resetTokenExpiresAt < new Date()
+        ){
+            throw new BadRequestException('El token de restablecimiento de contraseña ha expirado. Solicite uno nuevo');
+        }
+
+        const passwordHash = await bcrypt.hash(newPassword, 12);
+
+        await this.usersService.update(user.id, {
+            passwordHash,
+            resetToken: null,
+            resetTokenExpiresAt: null,
+        })
+
+        return{
+            message: 'Contraseña restablecida exitosamente. Ahora puede iniciar sesión',
+        }
+    }
+
     async verifyEmail(token: string, res: Response) {
         const user = await this.usersService.findByVerificationToken(token);
 

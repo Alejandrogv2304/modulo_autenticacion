@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import type { RegisterDto } from './dto/register.dto';
-import type { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 import type { User } from 'src/db/schema';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from 'src/common/decorators/public.decorators';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 
 
@@ -90,5 +92,22 @@ export class AuthController {
             roles: user.role,
             isVerified: user.isVerified,
         }
+    }
+
+    @Public()
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Solicitar restablecimiento de contraseña' })
+    async forgotPassword(@Body() dto: ForgotPasswordDto) {
+        return this.authService.forgotPassword(dto.email);
+    }
+
+
+    
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Restablecer contraseña' })
+    async resetPassword( @Body() dto: ResetPasswordDto ) {
+        return this.authService.resetPassword(dto.token, dto.password);
     }
 }
