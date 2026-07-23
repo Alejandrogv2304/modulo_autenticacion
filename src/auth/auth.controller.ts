@@ -103,7 +103,7 @@ export class AuthController {
     }
 
 
-    
+    @Public()
     @Post('reset-password')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Restablecer contraseña' })
