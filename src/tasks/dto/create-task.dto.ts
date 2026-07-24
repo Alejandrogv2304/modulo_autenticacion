@@ -5,7 +5,7 @@ export class CreateTaskDto{
     @ApiProperty({example:'Tarea de ejemplo'})
     @IsString()
     @IsNotEmpty()
-    tittle!: string;
+    title!: string;
 
     @ApiProperty({
         example:'Descripción de la tarea', 
